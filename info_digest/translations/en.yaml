@@ -20,5 +20,23 @@ configuration:
   initial_backfill_hours:
     name: Initial backfill, hours
     description: How many hours of history to load when a group is first connected.
+  yandex_folder_id:
+    name: Yandex AI Studio folder ID
+    description: Shown in the AI Studio page address after folders/, e.g. b1g...
+  yandex_api_key:
+    name: Yandex AI Studio API key
+    description: Service account key from AI Studio → Access → API keys. Stored only in the add-on options.
+  yandex_model:
+    name: Yandex model
+    description: Defaults to aliceai-llm-flash.
+  llm_mode:
+    name: What to send to the model
+    description: candidates — only messages with category keywords (cheaper, recommended); all — everything except obvious noise.
+  llm_monthly_token_limit:
+    name: Monthly token limit
+    description: Per model. When reached, the next model or rules-only labeling is used. 0 means no limit.
+  event_window_hours:
+    name: Event window, hours
+    description: Messages of the same category and place within this window are grouped into one event.
   log_level:
     name: Log level

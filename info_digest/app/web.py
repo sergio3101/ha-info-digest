@@ -8,13 +8,17 @@ from __future__ import annotations
 
 import html
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from aiohttp import web
 
 from . import __version__
 from .db import Database
+from .labeler import Labeler
+from .llm import LLMChain
 from .telegram_source import State, TelegramCollector
+
+METHOD_TEXT = {"rule": "правила", "llm": "LLM", "rule_fallback": "правила (LLM недоступна)"}
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +50,8 @@ h1 { font-size:20px; margin:0 0 4px; }
 table { width:100%; border-collapse:collapse; font-size:14px; }
 th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
 th { color:var(--muted); font-weight:500; }
+h2 { font-size:16px; margin:0 0 8px; }
+table + table, table + p, p + table { margin-top:12px; }
 td.num { text-align:right; font-variant-numeric:tabular-nums; }
 form { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
 input { padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font-size:15px; }
@@ -89,7 +95,73 @@ def _login_block(c: TelegramCollector) -> str:
     return ""
 
 
-def render_page(c: TelegramCollector, db: Database) -> str:
+def _labeling_block(db: Database, labeler: Labeler | None, chain: LLMChain | None) -> str:
+    if labeler is None:
+        return ""
+    e = html.escape
+    parts = ["<h2>Разметка</h2>"]
+
+    if chain and chain.providers:
+        rows = []
+        for p in chain.providers:
+            st = chain.state[p.name]
+            used = f"{chain.usage(p.name):,}".replace(",", " ")
+            limit = f" из {chain.monthly_token_limit:,}".replace(",", " ") if chain.monthly_token_limit else ""
+            status = "работает" if chain.active == p.name else ("ошибка" if st.last_error else "в резерве")
+            err = f'<div class="err">{e(st.last_error)}</div>' if st.last_error and chain.active != p.name else ""
+            rows.append(
+                f"<tr><td>{e(p.name)}</td><td>{status}{err}</td>"
+                f'<td class="num">{used}{limit}</td></tr>'
+            )
+        parts.append("<table><tr><th>Модель</th><th>Состояние</th><th>Токенов в этом месяце</th></tr>"
+                     + "".join(rows) + "</table>")
+    else:
+        parts.append('<p class="err">Модель не настроена — сообщения размечаются только правилами.</p>')
+
+    st = db.label_stats()
+    by_m = st["by_method"]
+    total = sum(by_m.values())
+    llm_share = f"{100 * by_m.get('llm', 0) / total:.0f}%" if total else "—"
+    methods = ", ".join(f"{METHOD_TEXT.get(k, k)}: {v}" for k, v in by_m.items()) or "пока ничего"
+    last = labeler.last_run_at.strftime("%H:%M") if labeler.last_run_at else "ещё не было"
+    parts.append(
+        f'<p class="muted">За 24 ч размечено {total} ({methods}). Доля LLM: {llm_share}. '
+        f"Ждут разметки: {st['pending']}. Последний проход: {last}.</p>"
+    )
+
+    cat_rows = "".join(
+        f"<tr><td>{e(r['group_name'])}</td><td>{e(r['category'])}</td><td class='num'>{r['n']}</td></tr>"
+        for r in st["by_category"]
+    )
+    if cat_rows:
+        parts.append("<table><tr><th>Группа</th><th>Категория</th><th>За 24 ч</th></tr>" + cat_rows + "</table>")
+    return '<section class="card">' + "".join(parts) + "</section>"
+
+
+def _events_block(db: Database) -> str:
+    e = html.escape
+    since = datetime.now(UTC) - timedelta(hours=24)
+    rows = []
+    for ev in db.events_overview(since):
+        status = "активно" if ev["status"] == "active" else "завершено"
+        place = e(ev["place"] or "—")
+        official = " · официально" if ev["official"] else ""
+        rows.append(
+            f"<tr><td>{e(ev['title'])}<div class='muted'>{e(ev['category'])} · {status}{official}</div></td>"
+            f"<td>{place}</td><td class='num'>{ev['messages']}</td><td class='num'>{ev['authors']}</td>"
+            f"<td>{_fmt_time(ev['last_at'])}</td></tr>"
+        )
+    body = (
+        "<table><tr><th>Событие</th><th>Место</th><th>Сообщ.</th><th>Авторов</th><th>Последнее</th></tr>"
+        + "".join(rows) + "</table>"
+        if rows
+        else '<p class="muted">Событий за последние 24 часа пока нет.</p>'
+    )
+    return f'<section class="card"><h2>События за 24 часа</h2>{body}</section>'
+
+
+def render_page(c: TelegramCollector, db: Database, labeler: Labeler | None = None,
+                chain: LLMChain | None = None) -> str:
     state_cls = {State.RUNNING: "running", State.ERROR: "error"}.get(c.state, "")
     err = f'<div class="err">{html.escape(c.error)}</div>' if c.error else ""
 
@@ -123,10 +195,13 @@ def render_page(c: TelegramCollector, db: Database) -> str:
     {_login_block(c)}
   </section>
   <section class="card">{table}</section>
+  {_events_block(db) if labeler else ""}
+  {_labeling_block(db, labeler, chain)}
 </main></body></html>"""
 
 
-def build_app(collector: TelegramCollector, db: Database) -> web.Application:
+def build_app(collector: TelegramCollector, db: Database, labeler: Labeler | None = None,
+              chain: LLMChain | None = None) -> web.Application:
     routes = web.RouteTableDef()
 
     def back(request: web.Request) -> web.HTTPSeeOther:
@@ -134,7 +209,7 @@ def build_app(collector: TelegramCollector, db: Database) -> web.Application:
 
     @routes.get("/")
     async def index(request: web.Request) -> web.Response:
-        return web.Response(text=render_page(collector, db), content_type="text/html")
+        return web.Response(text=render_page(collector, db, labeler, chain), content_type="text/html")
 
     @routes.post("/login/send_code")
     async def send_code(request: web.Request):

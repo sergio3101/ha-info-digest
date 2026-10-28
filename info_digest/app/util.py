@@ -22,11 +22,21 @@ class Options:
     telegram_proxy: str | None = None
     retention_days: int = 30
     initial_backfill_hours: int = 24
+    yandex_folder_id: str | None = None
+    yandex_api_key: str | None = None
+    yandex_model: str = "aliceai-llm-flash"
+    llm_mode: str = "candidates"
+    llm_monthly_token_limit: int = 5_000_000
+    event_window_hours: int = 3
     log_level: str = "info"
 
     @property
     def telegram_configured(self) -> bool:
         return bool(self.telegram_api_id and self.telegram_api_hash and self.telegram_phone)
+
+    @property
+    def yandex_configured(self) -> bool:
+        return bool(self.yandex_folder_id and self.yandex_api_key)
 
 
 def load_options(path: Path = OPTIONS_PATH) -> Options:

@@ -1,5 +1,5 @@
 name: Info Digest
-version: "0.1.1"
+version: "0.2.0"
 slug: info_digest
 description: Сводки городских чатов для Алисы
 url: https://github.com/sergio3101/ha-info-digest
@@ -18,6 +18,10 @@ options:
     - chatsudaka
   retention_days: 30
   initial_backfill_hours: 24
+  yandex_model: aliceai-llm-flash
+  llm_mode: candidates
+  llm_monthly_token_limit: 5000000
+  event_window_hours: 3
   log_level: info
 schema:
   telegram_api_id: "int?"
@@ -28,4 +32,10 @@ schema:
   telegram_proxy: "str?"
   retention_days: "int(1,365)"
   initial_backfill_hours: "int(0,168)"
+  yandex_folder_id: "str?"
+  yandex_api_key: "password?"
+  yandex_model: "str"
+  llm_mode: "list(candidates|all)"
+  llm_monthly_token_limit: "int(0,1000000000)"
+  event_window_hours: "int(1,24)"
   log_level: "list(debug|info|warning|error)"

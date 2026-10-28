@@ -1,0 +1,19 @@
+# Секреты и сессии
+.env
+*.env
+*.session
+*.session-journal
+secrets.yaml
+options.json
+
+# Данные
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/

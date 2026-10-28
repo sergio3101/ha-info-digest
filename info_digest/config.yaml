@@ -1,5 +1,5 @@
 name: Info Digest
-version: "0.1.0"
+version: "0.1.1"
 slug: info_digest
 description: Сводки городских чатов для Алисы
 url: https://github.com/sergio3101/ha-info-digest

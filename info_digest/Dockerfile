@@ -1,5 +1,7 @@
-ARG BUILD_FROM=python:3.12-slim
-FROM ${BUILD_FROM}
+# Базовый образ задан здесь, а не через build.yaml: Supervisor 2026.10+ считает
+# build.yaml устаревшим и подставляет свою базу без Python. Образ python
+# мультиархитектурный, Supervisor сам выбирает нужную платформу.
+FROM docker.io/library/python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

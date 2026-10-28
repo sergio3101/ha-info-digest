@@ -141,6 +141,14 @@ class Database:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Добавляет колонки, появившиеся в новых версиях, в уже созданную базу."""
+        for table in ("groups", "categories"):
+            cols = {r["name"] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+            if "phrases" not in cols:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN phrases TEXT NOT NULL DEFAULT '[]'")
 
     def close(self) -> None:
         self.conn.close()
@@ -280,15 +288,54 @@ class Database:
                 )
         return True
 
+    def fill_default_phrases(self, phrases: dict[str, list[str]]) -> int:
+        """Ставит голосовые фразы по умолчанию тем группам и категориям, у которых их ещё нет."""
+        n = 0
+        for table in ("groups", "categories"):
+            for slug, ph in phrases.items():
+                cur = self.conn.execute(
+                    f"UPDATE {table} SET phrases = ? WHERE slug = ? AND phrases = '[]'",
+                    (json.dumps(ph, ensure_ascii=False), slug),
+                )
+                n += cur.rowcount
+        return n
+
     def categories(self) -> list[sqlite3.Row]:
         return self.conn.execute(
             """
-            SELECT c.id, c.slug, c.name, c.description, c.keywords, c.in_digest, c.active,
+            SELECT c.id, c.slug, c.name, c.description, c.keywords, c.in_digest, c.active, c.phrases,
                    g.slug AS group_slug, g.name AS group_name
             FROM categories c JOIN groups g ON g.id = c.group_id
             ORDER BY g.sort, c.sort
             """
         ).fetchall()
+
+    def groups(self) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM groups ORDER BY sort").fetchall()
+
+    def events_for_digest(self, since: datetime, until: datetime | None = None) -> list[sqlite3.Row]:
+        """События, обновлявшиеся в окне, по категориям, участвующим в сводках."""
+        until = until or utcnow()
+        return self.conn.execute(
+            """
+            SELECT e.id, e.title, e.place, e.first_at, e.last_at, e.status,
+                   c.slug AS category_slug, c.name AS category, g.slug AS group_slug, g.name AS group_name,
+                   COUNT(l.msg_id) AS messages,
+                   COUNT(DISTINCT m.author_hash) AS authors,
+                   COALESCE(MAX(l.is_official), 0) AS official
+            FROM events e
+            JOIN categories c ON c.id = e.category_id JOIN groups g ON g.id = c.group_id
+            LEFT JOIN labels l ON l.event_id = e.id
+            LEFT JOIN messages m ON m.source_id = l.source_id AND m.msg_id = l.msg_id
+            WHERE e.last_at >= ? AND e.first_at <= ? AND c.in_digest = 1 AND g.in_digest = 1 AND c.active = 1
+            GROUP BY e.id
+            ORDER BY e.last_at DESC
+            """,
+            (iso(since), iso(until)),
+        ).fetchall()
+
+    def last_message_at(self) -> str | None:
+        return self.conn.execute("SELECT MAX(date) FROM messages").fetchone()[0]
 
     # --- разметка ------------------------------------------------------
 

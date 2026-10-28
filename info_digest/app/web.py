@@ -160,8 +160,26 @@ def _events_block(db: Database) -> str:
     return f'<section class="card"><h2>События за 24 часа</h2>{body}</section>'
 
 
+def _alice_block(publisher) -> str:
+    if publisher is None:
+        return ""
+    e = html.escape
+    from .ha import MAIN_SENSOR
+
+    last = publisher.last_publish_at.astimezone(publisher.tz).strftime("%H:%M") if publisher.last_publish_at else "ещё не было"
+    err = f'<div class="err">{e(publisher.last_error)}</div>' if publisher.last_error else ""
+    if not publisher.client.available:
+        err = '<div class="err">Нет связи с HA (нет токена Supervisor) — сенсоры не публикуются.</div>'
+    return (
+        '<section class="card"><h2>Алиса</h2>'
+        f"<p class='muted'>Сенсоры в HA обновлены: {last}. Голосовые фразы: {e(publisher.intents_status)}.</p>{err}"
+        f"<p class='muted'>Ответ на «Алиса, что нового в городе» берётся из <code>{MAIN_SENSOR}</code>.</p>"
+        "</section>"
+    )
+
+
 def render_page(c: TelegramCollector, db: Database, labeler: Labeler | None = None,
-                chain: LLMChain | None = None) -> str:
+                chain: LLMChain | None = None, publisher=None) -> str:
     state_cls = {State.RUNNING: "running", State.ERROR: "error"}.get(c.state, "")
     err = f'<div class="err">{html.escape(c.error)}</div>' if c.error else ""
 
@@ -197,11 +215,12 @@ def render_page(c: TelegramCollector, db: Database, labeler: Labeler | None = No
   <section class="card">{table}</section>
   {_events_block(db) if labeler else ""}
   {_labeling_block(db, labeler, chain)}
+  {_alice_block(publisher)}
 </main></body></html>"""
 
 
 def build_app(collector: TelegramCollector, db: Database, labeler: Labeler | None = None,
-              chain: LLMChain | None = None) -> web.Application:
+              chain: LLMChain | None = None, publisher=None) -> web.Application:
     routes = web.RouteTableDef()
 
     def back(request: web.Request) -> web.HTTPSeeOther:
@@ -209,7 +228,7 @@ def build_app(collector: TelegramCollector, db: Database, labeler: Labeler | Non
 
     @routes.get("/")
     async def index(request: web.Request) -> web.Response:
-        return web.Response(text=render_page(collector, db, labeler, chain), content_type="text/html")
+        return web.Response(text=render_page(collector, db, labeler, chain, publisher), content_type="text/html")
 
     @routes.post("/login/send_code")
     async def send_code(request: web.Request):
@@ -222,6 +241,8 @@ def build_app(collector: TelegramCollector, db: Database, labeler: Labeler | Non
         form = await request.post()
         if collector.state == State.CODE_SENT:
             await collector.submit_code(str(form.get("code", "")))
+            if publisher:
+                publisher.mark_dirty()
         raise back(request)
 
     @routes.post("/login/password")
@@ -229,6 +250,8 @@ def build_app(collector: TelegramCollector, db: Database, labeler: Labeler | Non
         form = await request.post()
         if collector.state == State.NEED_PASSWORD:
             await collector.submit_password(str(form.get("password", "")))
+            if publisher:
+                publisher.mark_dirty()
         raise back(request)
 
     @routes.post("/logout")

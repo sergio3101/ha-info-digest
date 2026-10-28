@@ -11,9 +11,10 @@ from aiohttp import web
 
 from . import __version__
 from .db import Database
+from .ha import HAClient, Publisher
 from .labeler import Labeler
 from .llm import LLMChain, yandex_provider
-from .taxonomy import DEFAULT_TAXONOMY
+from .taxonomy import DEFAULT_PHRASES, DEFAULT_TAXONOMY
 from .telegram_source import TelegramCollector
 from .util import Options, load_options, load_or_create_salt
 from .web import build_app
@@ -63,11 +64,16 @@ async def run() -> None:
     salt = load_or_create_salt(DATA_DIR / "salt")
     if db.seed_taxonomy(DEFAULT_TAXONOMY):
         log.info("Создан стартовый классификатор")
+    if db.fill_default_phrases(DEFAULT_PHRASES):
+        log.info("Добавлены голосовые фразы по умолчанию")
     collector = TelegramCollector(opts, db, DATA_DIR, salt)
     chain = build_chain(opts, db)
     labeler = Labeler(db, chain, mode=opts.llm_mode, event_window_hours=opts.event_window_hours)
+    ha_client = HAClient()
+    publisher = Publisher(db, ha_client, collector)
+    labeler.on_change = publisher.mark_dirty
 
-    runner = web.AppRunner(build_app(collector, db, labeler, chain), access_log=None)
+    runner = web.AppRunner(build_app(collector, db, labeler, chain, publisher), access_log=None)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", WEB_PORT).start()
     log.info("Страница дополнения доступна через панель HA")
@@ -79,13 +85,17 @@ async def run() -> None:
 
     cleanup_task = asyncio.create_task(cleanup_loop(db, opts.retention_days))
     label_task = asyncio.create_task(labeler.run_forever())
+    publish_task = asyncio.create_task(publisher.run_forever())
     await collector.start()
+    publisher.mark_dirty()  # состояние сбора изменилось — обновить сенсор здоровья
     await stop.wait()
 
     log.info("Остановка")
     cleanup_task.cancel()
     label_task.cancel()
+    publish_task.cancel()
     await chain.close()
+    await ha_client.close()
     await collector.stop()
     await runner.cleanup()
     db.close()

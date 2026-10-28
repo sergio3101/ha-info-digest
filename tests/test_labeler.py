@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from app.db import Database, Message
-from app.labeler import Labeler, same_place
+from app.labeler import Labeler, same_place, snippet_title
 from app.llm import Completion, LLMChain, LLMError
 from app.taxonomy import DEFAULT_TAXONOMY
 
@@ -155,6 +155,17 @@ def test_cleanup_cascades_labels(db):
     asyncio.run(Labeler(db, LLMChain([])).run_once(now=NOW))
     db.cleanup(30, now=NOW)
     assert db.conn.execute("SELECT COUNT(*) FROM labels").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    "text,title",
+    [("Пожар на рынке, много дыма", "Пожар на рынке, много дыма"),
+     ("Нет света! Звоните 89781234567 в РЭС", "Нет света"),
+     ("Опять " + "очень " * 20 + "долго нет воды", "Опять" + " очень" * 10),
+     ("", None)],
+)
+def test_snippet_title(text, title):
+    assert snippet_title(text) == title
 
 
 @pytest.mark.parametrize(

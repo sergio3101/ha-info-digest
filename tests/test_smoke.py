@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 MODULES = ["app", "app.main", "app.web", "app.db", "app.llm", "app.labeler", "app.classifier",
-           "app.taxonomy", "app.telegram_source", "app.util"]
+           "app.taxonomy", "app.telegram_source", "app.util", "app.digest", "app.intents", "app.ha"]
 
 
 @pytest.mark.parametrize("name", MODULES)

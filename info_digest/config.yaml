@@ -1,5 +1,5 @@
 name: Info Digest
-version: "0.2.2"
+version: "0.3.0"
 slug: info_digest
 description: Сводки городских чатов для Алисы
 url: https://github.com/sergio3101/ha-info-digest
@@ -13,6 +13,9 @@ ingress: true
 ingress_port: 8099
 panel_icon: mdi:newspaper-variant-outline
 panel_title: Сводки
+homeassistant_api: true
+map:
+  - homeassistant_config:rw
 options:
   telegram_api_id: ""
   telegram_api_hash: ""

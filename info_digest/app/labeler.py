@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -23,6 +24,7 @@ from .classifier import (
     parse_response,
     prefilter,
     rule_category,
+    scrub_pii,
 )
 from .db import Database
 from .llm import LLMChain
@@ -41,6 +43,20 @@ class CycleResult:
     by_rules: int = 0
     by_llm: int = 0
     rule_fallback: int = 0
+
+
+TITLE_MAX = 70
+
+
+def snippet_title(text: str) -> str | None:
+    """Заголовок события без модели: первое предложение сообщения, без телефонов и ников, до 70 символов."""
+    clean = " ".join(scrub_pii(text or "").split())
+    if not clean:
+        return None
+    first = re.split(r"(?<=[.!?])\s|\n", clean, maxsplit=1)[0].rstrip(" .!?,")
+    if len(first) > TITLE_MAX:
+        first = first[:TITLE_MAX].rsplit(" ", 1)[0].rstrip(" ,;:—-")
+    return first or None
 
 
 def same_place(a: str | None, b: str | None) -> bool:
@@ -65,6 +81,7 @@ class Labeler:
         self.mode = mode
         self.window = timedelta(hours=event_window_hours)
         self.interval_s = interval_s
+        self.on_change = None  # вызывается после прохода, в котором что-то размечено
         self.last_run_at: datetime | None = None
         self.last_result: CycleResult | None = None
         self._categories: list[Category] | None = None
@@ -107,6 +124,8 @@ class Labeler:
                         "Размечено %d: правилами %d, LLM %d, без LLM (запасной режим) %d",
                         res.total, res.by_rules, res.by_llm, res.rule_fallback,
                     )
+                    if self.on_change:
+                        self.on_change()
             except Exception:
                 log.exception("Сбой цикла разметки")
             await asyncio.sleep(self.interval_s)
@@ -185,7 +204,8 @@ class Labeler:
     def _apply_rules(self, row, matched: list[str], now: datetime | None) -> None:
         """Запасной режим без LLM: категория по ключевым словам, без места."""
         cat = rule_category(matched, self.categories()) or self._cat(OTHER)
-        lab = LlmLabel(category=cat.slug, extra=[], place=None, official=False, confidence=0.3, title=None)
+        lab = LlmLabel(category=cat.slug, extra=[], place=None, official=False, confidence=0.3,
+                       title=snippet_title(row["text"]))
         self._apply(row, lab, "rule_fallback", now)
 
     def _assign_event(self, row, cat: Category, place: str | None, title: str | None) -> int:

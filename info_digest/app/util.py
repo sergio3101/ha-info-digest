@@ -45,7 +45,12 @@ def load_options(path: Path = OPTIONS_PATH) -> Options:
         return Options()
     raw = json.loads(path.read_text(encoding="utf-8"))
     known = Options.__dataclass_fields__.keys()
-    opts = Options(**{k: v for k, v in raw.items() if k in known and v not in (None, "")})
+    # Ключи часто вставляют с пробелами по краям — убираем; пустые поля считаем незаполненными.
+    cleaned = {k: v.strip() if isinstance(v, str) else v for k, v in raw.items() if k in known}
+    opts = Options(**{k: v for k, v in cleaned.items() if v not in (None, "")})
+    # api_id в форме HA — строка (чтобы поле было видно пустым), а Telethon нужен int.
+    api_id = str(opts.telegram_api_id or "").strip()
+    opts.telegram_api_id = int(api_id) if api_id.isdigit() else None
     opts.telegram_chats = [c for c in (normalize_chat_ref(c) for c in opts.telegram_chats) if c]
     return opts
 

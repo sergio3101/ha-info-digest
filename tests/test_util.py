@@ -76,6 +76,20 @@ def test_load_options(tmp_path):
     assert o.telegram_proxy is None
 
 
+def test_load_options_string_api_id_and_blank_fields(tmp_path):
+    p = tmp_path / "options.json"
+    p.write_text(json.dumps({
+        "telegram_api_id": " 1234567 ", "telegram_api_hash": "", "telegram_phone": "",
+        "telegram_chats": ["chatsudaka"], "yandex_folder_id": " b1gabc ", "yandex_api_key": "",
+    }))
+    o = load_options(p)
+    assert o.telegram_api_id == 1234567
+    assert not o.telegram_configured
+    assert o.yandex_folder_id == "b1gabc" and not o.yandex_configured
+    p.write_text(json.dumps({"telegram_api_id": "abc", "telegram_chats": []}))
+    assert load_options(p).telegram_api_id is None
+
+
 def test_load_options_missing_file(tmp_path):
     o = load_options(tmp_path / "nope.json")
     assert not o.telegram_configured

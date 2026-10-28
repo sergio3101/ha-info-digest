@@ -1,0 +1,24 @@
+configuration:
+  telegram_api_id:
+    name: Telegram api_id
+    description: Number from my.telegram.org → API development tools (collector account).
+  telegram_api_hash:
+    name: Telegram api_hash
+    description: String from my.telegram.org → API development tools. Stored only in the add-on options.
+  telegram_phone:
+    name: Collector account phone
+    description: International format, e.g. +79001234567.
+  telegram_chats:
+    name: Telegram groups
+    description: Group usernames without @ or t.me links. The collector account must already be a member.
+  telegram_proxy:
+    name: Telegram proxy
+    description: Optional, e.g. socks5://192.168.88.1:1080. Empty means direct connection.
+  retention_days:
+    name: Keep messages, days
+    description: Messages older than this are deleted once a day.
+  initial_backfill_hours:
+    name: Initial backfill, hours
+    description: How many hours of history to load when a group is first connected.
+  log_level:
+    name: Log level

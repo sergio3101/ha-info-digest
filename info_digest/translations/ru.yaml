@@ -1,0 +1,24 @@
+configuration:
+  telegram_api_id:
+    name: Telegram api_id
+    description: Число из my.telegram.org → API development tools (для аккаунта-сборщика).
+  telegram_api_hash:
+    name: Telegram api_hash
+    description: Строка из my.telegram.org → API development tools. Хранится только в настройках дополнения.
+  telegram_phone:
+    name: Номер аккаунта-сборщика
+    description: В международном формате, например +79001234567.
+  telegram_chats:
+    name: Группы Telegram
+    description: Имена групп без @ или ссылки t.me. Аккаунт-сборщик должен уже состоять в этих группах.
+  telegram_proxy:
+    name: Прокси для Telegram
+    description: Необязательно. Например socks5://192.168.88.1:1080. Пусто — напрямую.
+  retention_days:
+    name: Хранить сообщения, дней
+    description: Сообщения старше этого срока удаляются из базы раз в сутки.
+  initial_backfill_hours:
+    name: Начальная загрузка, часов
+    description: Сколько часов истории загрузить при первом подключении группы.
+  log_level:
+    name: Уровень логов
